@@ -1,11 +1,8 @@
 name: Build Griddy (RootHide arm64e)
 
+# Manual-only while the first development build is being validated.
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-      - fix/roothide-ios17-arm64e
 
 permissions:
   contents: read
@@ -20,7 +17,7 @@ jobs:
     timeout-minutes: 30
     env:
       THEOS: ${{ github.workspace }}/theos
-      TARGET: iphone:clang:latest:15.0
+      TARGET: iphone:clang:17.5:15.0
       ARCHS: arm64e
       THEOS_PACKAGE_SCHEME: roothide
 
