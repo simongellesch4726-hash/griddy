@@ -4,8 +4,8 @@ BOOL needsRefresh;
 NSUInteger findFirstOpenIndexInListStartingAt(NSArray *list, SBHIconGridSize gridSize, int start) {
     if (gridSize.columns == 0 || gridSize.rows == 0) return 0;
 
-    int size = gridSize.columns * gridSize.rows;
-    if (gridSize.columns >= 100 || gridSize.rows >= 100) size = 500;
+    long long totalCells = (long long)gridSize.columns * gridSize.rows;
+    int size = (gridSize.columns >= 100 || gridSize.rows >= 100) ? 500 : (int)totalCells;
     if (size <= 0) return 0;
 
     //create an array that will store icon indexes
@@ -54,11 +54,11 @@ BOOL checkValidIndexForIconSize(SBIconListGridCellInfo *info, SBHIconGridSize wr
     int rows = info.gridSize.rows;
     if (cols <= 0 || rows <= 0 || writeSize.columns == 0 || writeSize.rows == 0 || writeIndex < 0) return NO;
 
-    int totalLength = cols * rows;
+    long long totalLength = (long long)cols * rows;
     if (writeIndex >= totalLength) return NO;
 
     //already has an icon in that spot
-    if ([info iconIndexForGridCellIndex:(NSUInteger)writeIndex] < totalLength) return NO;
+    if ([info iconIndexForGridCellIndex:(NSUInteger)writeIndex] < (NSUInteger)totalLength) return NO;
     //doesnt fit horizontally(example: a 2x2 widget placed with top left corner in the far right)
     if (((writeIndex % cols) + writeSize.columns) > cols) return NO;
     //doesnt fit vertically(example: a 2x2 widget placed with top left corner in the bottom row)
@@ -127,6 +127,7 @@ NSArray *reorderIconListBasedOnCustomIndex(NSArray *iconList, int size) {
     }
 
     // Preserve every icon while resolving stale and duplicate saved indexes safely.
+    NSMutableArray *overflowIcons = [NSMutableArray array];
     for (int i = 0; i < [iconList count]; i++) {
         SBIcon *icon = iconList[i];
         GriddyIconLocationPreferences *prefs = locationPrefs[icon.uniqueIdentifier];
@@ -140,13 +141,16 @@ NSArray *reorderIconListBasedOnCustomIndex(NSArray *iconList, int size) {
                 candidate = 0;
                 while (candidate < target && tempArr[candidate] != -1) candidate++;
             }
-            if (candidate >= size || tempArr[candidate] != -1) continue;
+            if (candidate >= size || tempArr[candidate] != -1) {
+                [overflowIcons addObject:icon];
+                continue;
+            }
             target = candidate;
         }
         tempArr[target] = i;
     }
 
-    //go through the temporary array, and take any icons you find along the way, puttung them in a new array
+    // Put grid-addressable icons in grid order, then retain any overflow icons.
     NSMutableArray *newList = [[NSMutableArray alloc] init];
     for (int i = 0; i < size; i++) {
         if (tempArr[i] != -1) {
@@ -154,19 +158,18 @@ NSArray *reorderIconListBasedOnCustomIndex(NSArray *iconList, int size) {
             [newList addObject:icon];
         }
     }
-    //assign priorities to icons, in order of them showing up as well as based on their class
+    [newList addObjectsFromArray:overflowIcons];
+
+    // Assign priorities in display order, tolerating missing preference entries.
     int widgetCount = 0;
-    for(int i = 0; i < [newList count]; i++) {
+    for (int i = 0; i < [newList count]; i++) {
         SBIcon *icon = newList[i];
         GriddyIconLocationPreferences *prefs = locationPrefs[icon.uniqueIdentifier];
-        //widgets get 0-99
         if ([icon isKindOfClass:NSClassFromString(@"SBWidgetIcon")]) {
-            prefs.priority = widgetCount;
+            if (prefs) prefs.priority = widgetCount;
             widgetCount++;
-        }
-        //normal icons get 200+
-        else {
-            prefs.priority = 200+(i-widgetCount);
+        } else if (prefs) {
+            prefs.priority = 200 + (i - widgetCount);
         }
     }
 
