@@ -281,22 +281,13 @@ NSArray *patchGridCellInfoForIconList(NSArray *staticIconList, SBIconListGridCel
         SBHIconGridSize writeSize = prefs.gridSize;
     
 
-        int limit = 0;
-        while (!checkValidIndexForIconSize(info, writeSize, writeIndex)) {
+        long long totalCells = (long long)info.gridSize.columns * info.gridSize.rows;
+        long long attempts = 0;
+        while (!checkValidIndexForIconSize(info, writeSize, (long long)writeIndex) && attempts < totalCells) {
             needsRefresh = YES;
-            //adding a limit just in case it can't find a spot
-            if (limit > 200) {
-                writeIndex = 0;
-                break;
-            }
-
-            writeIndex += 1;
-            if (writeIndex >= info.gridSize.columns * info.gridSize.rows) {
-                //wrap back around
-                writeIndex = findFirstOpenIndexInListStartingAt(iconList, info.gridSize, 0);
-            }
-
-            limit++;
+            writeIndex++;
+            if ((long long)writeIndex >= totalCells) writeIndex = 0;
+            attempts++;
         }
         
         // Do not write grid cells if no valid position could be found for this icon.
