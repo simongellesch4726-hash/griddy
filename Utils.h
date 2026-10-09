@@ -81,3 +81,9 @@ void transferGriddySave();
  * @param miniIconLayout SBIconListGridLayout describing the layout fo mini icons
  */
 SBIconGridImage *generateNewFolderImageForModel(SBIconListModel *model, SBIconGridImage *gridImageRef, SBFolderIconImageCache *imageCache, SBIconListGridLayout *miniIconLayout);
+
+/**
+ * Applies saved custom cell positions to an iOS 17 transient drag-layout result.
+ * This function does not mutate preferences, drag state, or the model's icon order.
+ */
+void applyGriddyLayoutToGridCellInfo(NSArray *iconList, SBIconListGridCellInfo *info);
