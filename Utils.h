@@ -87,3 +87,6 @@ SBIconGridImage *generateNewFolderImageForModel(SBIconListModel *model, SBIconGr
  * This function does not mutate preferences, drag state, or the model's icon order.
  */
 void applyGriddyLayoutToGridCellInfo(NSArray *iconList, SBIconListGridCellInfo *info);
+
+/** Render an iOS 17 folder-page preview using the modern icon-image cache API. */
+SBIconGridImage *griddyRenderFolderPage(id cache, NSUInteger pageIndex, SBFolderIcon *folderIcon, SBIconGridImage *original);
