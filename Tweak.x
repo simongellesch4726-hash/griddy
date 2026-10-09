@@ -22,6 +22,8 @@ BOOL patchFoldersChecked = NO;
 NSMutableDictionary<NSString *, SBIconGridImage *> *folderImageCache;
 BOOL griddyImageSuccess = NO;
 BOOL hasLoadedPrefs = NO;
+BOOL griddyIndexPathFolderAnim = NO;
+BOOL griddyFolderIconGridMapping = NO;
 
 %hook SBIconListModel
 %property (assign, nonatomic) BOOL griddyShouldPatch; 
@@ -135,6 +137,18 @@ BOOL hasLoadedPrefs = NO;
     return %orig;
 }
 
+// Preserve the patch flag when iOS 17 creates temporary model copies for drag reflow.
+- (id)copyWithZone:(NSZone *)zone {
+    SBIconListModel *copy = %orig;
+    if ([copy isKindOfClass:%c(SBIconListModel)]) copy.griddyShouldPatch = self.griddyShouldPatch;
+    return copy;
+}
+- (id)initWithIconListModel:(SBIconListModel *)sourceModel copyLeafIcons:(BOOL)copyLeafIcons {
+    SBIconListModel *copy = %orig;
+    if (copy && [sourceModel isKindOfClass:%c(SBIconListModel)]) copy.griddyShouldPatch = sourceModel.griddyShouldPatch;
+    return copy;
+}
+
 //removing entry when removing icon
 - (void)removeIcon:(SBIcon *)icon options:(NSUInteger)arg1 {
     %orig;
@@ -146,6 +160,16 @@ BOOL hasLoadedPrefs = NO;
 
 %end
 
+
+%group GriddyiOS17DragLayout
+%hook SBIconListModel
+- (id)gridCellInfoForIcons:(NSArray *)icons referenceIconOrder:(NSArray *)order options:(NSUInteger)options {
+    SBIconListGridCellInfo *info = %orig;
+    if (self.griddyShouldPatch && info) applyGriddyLayoutToGridCellInfo(icons, info);
+    return info;
+}
+%end
+%end
 
 %hook SBIconView
 
@@ -329,6 +353,7 @@ BOOL hasLoadedPrefs = NO;
 %hook SBFolderIconImageView
 //this patches the animation for opening and closing a folder(the zoom in and out)
 - (CGRect)frameForMiniIconAtIndex:(NSUInteger)arg0 {
+    if (griddyIndexPathFolderAnim || griddyFolderIconGridMapping) return %orig;
     SBFolder *folder = ((SBFolderIcon *)self.icon).folder;
     SBIconListModel *model = folder.firstList;
 
@@ -338,12 +363,73 @@ BOOL hasLoadedPrefs = NO;
     if ([model.icons count] > arg0) {
         SBIcon *icon = model.icons[arg0];
         GriddyIconLocationPreferences *prefs = locationPrefs[icon.uniqueIdentifier];
+        if (!prefs) return %orig;
         return %orig(prefs.index);
     }
 
     return %orig;
 }
 
+%end
+
+%group GriddyIndexPathFolderAnim
+%hook SBFolderIconImageView
+- (CGRect)frameForMiniIconAtIndexPath:(NSIndexPath *)indexPath {
+    if (![indexPath isKindOfClass:[NSIndexPath class]] || indexPath.length != 2) return %orig;
+    if (griddyFolderIconGridMapping) return %orig;
+    SBFolder *folder = ((SBFolderIcon *)self.icon).folder;
+    NSUInteger page = indexPath.section;
+    NSUInteger item = indexPath.item;
+    if (page >= folder.lists.count) return %orig;
+    SBIconListModel *model = folder.lists[page];
+    if (!model.griddyShouldPatch || !shouldPatchFolderIcon || item >= model.icons.count) return %orig;
+    SBIcon *icon = model.icons[item];
+    GriddyIconLocationPreferences *prefs = locationPrefs[icon.uniqueIdentifier];
+    if (!prefs) return %orig;
+    return %orig([NSIndexPath indexPathForItem:prefs.index inSection:page]);
+}
+%end
+%end
+
+%group GriddyFolderIconGridMapping
+%hook SBFolderIcon
+- (NSUInteger)gridCellIndexForIconIndex:(NSUInteger)iconIndex {
+    if (!shouldPatchFolderIcon) return %orig;
+    SBIconListModel *model = self.folder.firstList;
+    if (!model.griddyShouldPatch || iconIndex >= model.icons.count) return %orig;
+    SBIcon *icon = model.icons[iconIndex];
+    GriddyIconLocationPreferences *prefs = locationPrefs[icon.uniqueIdentifier];
+    if (!prefs) return %orig;
+    return prefs.index;
+}
+%end
+%end
+
+// The modern cache path bypasses the legacy wrapper. Flag the folder models before composition
+// and mark their previews stale when SpringBoard rebuilds them.
+%group GriddyFolderImageCache
+%hook SBFolderIconImageCache
+- (id)imageForPageAtIndex:(NSUInteger)pageIndex inFolderIcon:(SBFolderIcon *)folderIcon {
+    for (SBIconListModel *model in folderIcon.folder.lists) model.griddyShouldPatch = YES;
+    return %orig;
+}
+- (void)rebuildImagesForFolderIcon:(SBFolderIcon *)folderIcon {
+    for (SBIconListModel *model in folderIcon.folder.lists) model.griddyNeedsRefreshFolderImage = YES;
+    %orig;
+}
+- (void)rebuildImagesReferencingIcons:(NSArray *)icons { %orig; }
+%end
+%hook SBFolderIconImageSharedCache
+- (id)imageForPageAtIndex:(NSUInteger)pageIndex inFolderIcon:(SBFolderIcon *)folderIcon {
+    for (SBIconListModel *model in folderIcon.folder.lists) model.griddyShouldPatch = YES;
+    return %orig;
+}
+- (void)rebuildImagesForFolderIcon:(SBFolderIcon *)folderIcon {
+    for (SBIconListModel *model in folderIcon.folder.lists) model.griddyNeedsRefreshFolderImage = YES;
+    %orig;
+}
+- (void)rebuildImagesReferencingIcons:(NSArray *)icons { %orig; }
+%end
 %end
 
 //_SBIconGridWrapperView is the image view for the mini icons on the folder icon
@@ -412,6 +498,17 @@ BOOL hasLoadedPrefs = NO;
 %end
 
 %hook SBIconListView
+- (void)setModel:(SBIconListModel *)model {
+    if (model && [patchLocations containsObject:self.iconLocation]) model.griddyShouldPatch = YES;
+    %orig;
+}
+- (void)setTemporaryModel:(SBIconListModel *)model {
+    if (model && [patchLocations containsObject:self.iconLocation]) model.griddyShouldPatch = YES;
+    %orig;
+}
+%end
+
+%hook SBIconListView
 - (void)layoutIconsIfNeeded {
 
     //determine if the model should be patched or not
@@ -472,4 +569,24 @@ BOOL hasLoadedPrefs = NO;
     patchLocations = [NSArray arrayWithObjects:temp count:5];
 
     folderImageCache = [[NSMutableDictionary alloc] init];
+
+    Class listModelClass = NSClassFromString(@"SBIconListModel");
+    if ([listModelClass instancesRespondToSelector:@selector(gridCellInfoForIcons:referenceIconOrder:options:)]) {
+        %init(GriddyiOS17DragLayout);
+    }
+    Class folderImageViewClass = NSClassFromString(@"SBFolderIconImageView");
+    if ([folderImageViewClass instancesRespondToSelector:@selector(frameForMiniIconAtIndexPath:)]) {
+        %init(GriddyIndexPathFolderAnim);
+        griddyIndexPathFolderAnim = YES;
+    }
+    Class folderIconClass = NSClassFromString(@"SBFolderIcon");
+    if ([folderIconClass instancesRespondToSelector:@selector(gridCellIndexForIconIndex:)]) {
+        %init(GriddyFolderIconGridMapping);
+        griddyFolderIconGridMapping = YES;
+    }
+    if (NSClassFromString(@"SBFolderIconImageCache") &&
+        NSClassFromString(@"SBFolderIconImageSharedCache") &&
+        [NSClassFromString(@"SBFolderIconImageCache") instancesRespondToSelector:@selector(imageForPageAtIndex:inFolderIcon:)]) {
+        %init(GriddyFolderImageCache);
+    }
 }
