@@ -28,19 +28,32 @@ jobs:
       - name: Install build dependencies
         run: brew install ldid xz dpkg
 
-      - name: Install RootHide Theos
+      - name: Install pinned RootHide Theos
+        env:
+          THEOS_COMMIT: cfba89a53a05b4a1b822121158acc3669c20602f
         run: |
-          git clone --depth 1 --recursive https://github.com/roothide/theos.git "$THEOS"
+          git init "$THEOS"
+          git -C "$THEOS" remote add origin https://github.com/roothide/theos.git
+          git -C "$THEOS" fetch --depth 1 origin "$THEOS_COMMIT"
+          git -C "$THEOS" checkout --detach FETCH_HEAD
+          git -C "$THEOS" submodule update --init --recursive
           test -f "$THEOS/makefiles/common.mk"
           mkdir -p "$THEOS/sdks"
 
       - name: Install pinned iOS SDK
+        env:
+          IOS_SDKS_COMMIT: a4262fddfae9ce1a211f093479edb1555f68228d
         run: |
-          git clone --depth 1 --filter=blob:none --sparse https://github.com/Tonwalter888/iOS-SDKs.git "$RUNNER_TEMP/ios-sdks"
+          git init "$RUNNER_TEMP/ios-sdks"
+          git -C "$RUNNER_TEMP/ios-sdks" remote add origin https://github.com/Tonwalter888/iOS-SDKs.git
+          git -C "$RUNNER_TEMP/ios-sdks" config core.sparseCheckout true
+          git -C "$RUNNER_TEMP/ios-sdks" fetch --depth 1 --filter=blob:none origin "$IOS_SDKS_COMMIT"
+          git -C "$RUNNER_TEMP/ios-sdks" checkout --detach FETCH_HEAD
+          git -C "$RUNNER_TEMP/ios-sdks" sparse-checkout init --cone
           git -C "$RUNNER_TEMP/ios-sdks" sparse-checkout set iPhoneOS17.5.sdk
           test -d "$RUNNER_TEMP/ios-sdks/iPhoneOS17.5.sdk"
           cp -R "$RUNNER_TEMP/ios-sdks/iPhoneOS17.5.sdk" "$THEOS/sdks/"
-          test -d "$THEOS/sdks/iPhoneOS17.5.sdk"
+          test -f "$THEOS/sdks/iPhoneOS17.5.sdk/SDKSettings.plist"
 
       - name: Sanity-check build environment
         run: |
