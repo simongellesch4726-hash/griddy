@@ -1,6 +1,6 @@
 name: Build Griddy (RootHide arm64e)
 
-# Manual-only while the first development build is being validated.
+# Build automatically for changes on this development branch; manual dispatch remains available.
 on:
   push:
     branches:
@@ -51,14 +51,14 @@ jobs:
           git -C "$RUNNER_TEMP/ios-sdks" fetch --depth 1 --filter=blob:none origin "$IOS_SDKS_COMMIT"
           git -C "$RUNNER_TEMP/ios-sdks" sparse-checkout set iPhoneOS17.0.sdk
           git -C "$RUNNER_TEMP/ios-sdks" checkout --detach "$IOS_SDKS_COMMIT"
-          test -d "$RUNNER_TEMP/ios-sdks/iPhoneOS17.5.sdk"
-          cp -R "$RUNNER_TEMP/ios-sdks/iPhoneOS17.5.sdk" "$THEOS/sdks/"
-          test -f "$THEOS/sdks/iPhoneOS17.5.sdk/SDKSettings.plist"
+          test -d "$RUNNER_TEMP/ios-sdks/iPhoneOS17.0.sdk"
+          cp -R "$RUNNER_TEMP/ios-sdks/iPhoneOS17.0.sdk" "$THEOS/sdks/"
+          test -f "$THEOS/sdks/iPhoneOS17.0.sdk/SDKSettings.plist"
 
       - name: Sanity-check build environment
         run: |
           test -x "$THEOS/bin/nic.pl" || test -f "$THEOS/makefiles/common.mk"
-          test -f "$THEOS/sdks/iPhoneOS17.5.sdk/SDKSettings.plist"
+          test -f "$THEOS/sdks/iPhoneOS17.0.sdk/SDKSettings.plist"
           xcrun --find clang
           make --version
 
