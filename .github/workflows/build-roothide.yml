@@ -1,0 +1,103 @@
+name: Build Griddy (RootHide arm64e)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - fix/roothide-ios17-arm64e
+
+permissions:
+  contents: read
+
+concurrency:
+  group: griddy-roothide-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 30
+    env:
+      THEOS: ${{ github.workspace }}/theos
+      TARGET: iphone:clang:latest:15.0
+      ARCHS: arm64e
+      THEOS_PACKAGE_SCHEME: roothide
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: brew install ldid xz dpkg
+
+      - name: Install RootHide Theos
+        run: |
+          git clone --depth 1 --recursive https://github.com/roothide/theos.git "$THEOS"
+          test -f "$THEOS/makefiles/common.mk"
+          mkdir -p "$THEOS/sdks"
+
+      - name: Install pinned iOS SDK
+        run: |
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/Tonwalter888/iOS-SDKs.git "$RUNNER_TEMP/ios-sdks"
+          git -C "$RUNNER_TEMP/ios-sdks" sparse-checkout set iPhoneOS17.5.sdk
+          test -d "$RUNNER_TEMP/ios-sdks/iPhoneOS17.5.sdk"
+          cp -R "$RUNNER_TEMP/ios-sdks/iPhoneOS17.5.sdk" "$THEOS/sdks/"
+          test -d "$THEOS/sdks/iPhoneOS17.5.sdk"
+
+      - name: Sanity-check build environment
+        run: |
+          test -x "$THEOS/bin/nic.pl" || test -f "$THEOS/makefiles/common.mk"
+          test -f "$THEOS/sdks/iPhoneOS17.5.sdk/SDKSettings.plist"
+          xcrun --find clang
+          make --version
+
+      - name: Build package
+        run: |
+          make clean
+          make package FINALPACKAGE=1
+
+      - name: Verify package and binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t packages < <(find . -type f -name '*.deb' -not -path './.git/*' -not -path './theos/*' | sort)
+          if [ "${#packages[@]}" -ne 1 ]; then
+            printf 'Expected exactly one .deb, found %s\n' "${#packages[@]}"
+            printf '%s\n' "${packages[@]}"
+            exit 1
+          fi
+
+          deb="${packages[0]}"
+          architecture="$(dpkg-deb --field "$deb" Architecture)"
+          echo "Package: $deb"
+          echo "Architecture: $architecture"
+          test "$architecture" = "iphoneos-arm64e"
+
+          if dpkg-deb --contents "$deb" | grep -E '[[:space:]]\./?var/jb(/|$)'; then
+            echo "Unexpected /var/jb path found in RootHide package" >&2
+            exit 1
+          fi
+
+          payload="$RUNNER_TEMP/griddy-payload"
+          mkdir -p "$payload"
+          dpkg-deb --extract "$deb" "$payload"
+          dylib="$(find "$payload" -type f -name 'Griddy.dylib' -print -quit)"
+          test -n "$dylib"
+          architectures="$(xcrun lipo -archs "$dylib")"
+          echo "Griddy.dylib architectures: $architectures"
+          case " $architectures " in
+            *" arm64e "*) ;;
+            *) echo "Griddy.dylib has no arm64e slice" >&2; exit 1 ;;
+          esac
+
+          echo "DEB_PATH=$deb" >> "$GITHUB_ENV"
+          shasum -a 256 "$deb"
+
+      - name: Upload verified package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Griddy-RootHide-arm64e
+          path: ${{ env.DEB_PATH }}
+          if-no-files-found: error
+          retention-days: 14
