@@ -588,6 +588,9 @@ BOOL griddyComposingFolderPage = NO;
 
     folderImageCache = [[NSMutableDictionary alloc] init];
 
+    // Initialize hooks in Logos’ default (ungrouped) hook group.
+    %init();
+
     Class listModelClass = NSClassFromString(@"SBIconListModel");
     if ([listModelClass instancesRespondToSelector:@selector(gridCellInfoForIcons:referenceIconOrder:options:)]) {
         %init(GriddyiOS17DragLayout);
