@@ -22,6 +22,7 @@ BOOL patchFoldersChecked = NO;
 NSMutableDictionary *folderImageCache;
 BOOL griddyImageSuccess = NO;
 BOOL hasLoadedPrefs = NO;
+BOOL griddyModernFolderPath = NO;
 BOOL griddyIndexPathFolderAnim = NO;
 BOOL griddyFolderIconGridMapping = NO;
 BOOL griddyComposingFolderPage = NO;
@@ -402,6 +403,8 @@ BOOL griddyComposingFolderPage = NO;
     SBIcon *icon = model.icons[iconIndex];
     GriddyIconLocationPreferences *prefs = locationPrefs[icon.uniqueIdentifier];
     if (!prefs) return %orig;
+    long long totalCells = (long long)model.gridSize.columns * model.gridSize.rows;
+    if (totalCells <= 0 || prefs.index >= (NSUInteger)totalCells) return %orig;
     return prefs.index;
 }
 %end
@@ -451,6 +454,7 @@ BOOL griddyComposingFolderPage = NO;
 
 - (void)setImage:(UIImage *)image {
     if (!image) return %orig;
+    if (griddyModernFolderPath) return %orig;
     
     //getting needed items
     _SBFolderPageElement *elem = self.element;
@@ -602,5 +606,6 @@ BOOL griddyComposingFolderPage = NO;
         NSClassFromString(@"SBFolderIconImageSharedCache") &&
         [NSClassFromString(@"SBFolderIconImageCache") instancesRespondToSelector:@selector(imageForPageAtIndex:inFolderIcon:)]) {
         %init(GriddyFolderImageCache);
+        griddyModernFolderPath = YES;
     }
 }
