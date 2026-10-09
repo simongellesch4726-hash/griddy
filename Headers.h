@@ -87,12 +87,18 @@ typedef struct SBIconImageInfo {
 @end
 
 @interface SBFolderIconImageCache : NSObject
+- (UIImage *)gridCellImageForIcon:(id)icon;
+@property (nonatomic, readonly) id listLayout;
+- (BOOL)shouldSkipGridCellImageForIcon:(id)icon;
 - (id)imageForPageAtIndex:(NSUInteger)pageIndex inFolderIcon:(id)folderIcon;
 - (void)rebuildImagesForFolderIcon:(id)folderIcon;
 - (void)rebuildImagesReferencingIcons:(id)icons;
 @end
 
 @interface SBFolderIconImageSharedCache : NSObject
+- (UIImage *)gridCellImageForIcon:(id)icon;
+@property (nonatomic, readonly) id listLayout;
+- (BOOL)shouldSkipGridCellImageForIcon:(id)icon;
 - (id)imageForPageAtIndex:(NSUInteger)pageIndex inFolderIcon:(id)folderIcon;
 - (void)rebuildImagesForFolderIcon:(id)folderIcon;
 - (void)rebuildImagesReferencingIcons:(id)icons;
