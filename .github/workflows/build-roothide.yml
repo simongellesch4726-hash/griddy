@@ -2,6 +2,9 @@ name: Build Griddy (RootHide arm64e)
 
 # Manual-only while the first development build is being validated.
 on:
+  push:
+    branches:
+      - fix/roothide-ios17-arm64e
   workflow_dispatch:
 
 permissions:
