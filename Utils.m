@@ -183,6 +183,7 @@ NSArray *reorderIconListBasedOnCustomIndex(NSArray *iconList, int size) {
 
 NSArray *patchGridCellInfoForIconList(NSArray *staticIconList, SBIconListGridCellInfo *info, SBIconListModel *model) {
     NSMutableArray *iconList = [staticIconList mutableCopy];
+    if (info.gridSize.columns == 0 || info.gridSize.rows == 0) return staticIconList;
     if (info.gridSize.columns > 100 || info.gridSize.rows > 100) return staticIconList;
     [info clearAllIconAndGridCellIndexes];
 
@@ -298,6 +299,9 @@ NSArray *patchGridCellInfoForIconList(NSArray *staticIconList, SBIconListGridCel
             limit++;
         }
         
+        // Do not write grid cells if no valid position could be found for this icon.
+        if (!checkValidIndexForIconSize(info, writeSize, (long long)writeIndex)) continue;
+
         //only save to location prefs if we have nothing in dragged
         //v1.0.3 added isEditingLayout to support Atria glitch where on startup
         //grid would be smaller than it should and it would  overwrite locations
@@ -311,14 +315,17 @@ NSArray *patchGridCellInfoForIconList(NSArray *staticIconList, SBIconListGridCel
         //go through and grab every grid index for the icon, whihc we will save as the specific icon index
         for (int j = 0; j < writeSize.rows; j++) {
             for (int k = 0; k < writeSize.columns; k++) {
-                NSUInteger tempIdx = (writeIndex + (model.gridSize.columns * j)) + k;
-                [writeIndexList addObject:[NSNumber numberWithUnsignedLongLong:tempIdx]];
+                NSUInteger tempIdx = (writeIndex + (info.gridSize.columns * j)) + k;
+                if (tempIdx < (NSUInteger)(info.gridSize.columns * info.gridSize.rows)) {
+                    [writeIndexList addObject:[NSNumber numberWithUnsignedLongLong:tempIdx]];
+                }
             }
         }
         
 
         //convert the index in the icon list(ordered by priority) to the actual list that is saved on the SBIconListModel instance
-        int realIdx = [staticIconList indexOfObject:icon];
+        NSUInteger realIdx = [staticIconList indexOfObject:icon];
+        if (realIdx == NSNotFound) continue;
 
         // write locations to the SBIconGridCellInfo
         for (int k = 0; k < [writeIndexList count]; k++) {
@@ -340,27 +347,27 @@ NSArray *patchGridCellInfoForIconList(NSArray *staticIconList, SBIconListGridCel
 //used to calculate the grid cell index for a point and icon size
 //note: this function always returns the index for the top left corner of an icon
 long long calculateGridCellIndexForPoint(CGPoint point, CGRect workingSize, SBHIconGridSize workingGridSize, SBHIconGridSize indexOffset, SBHIconGridSize iconSize) {
-    NSUInteger tempIdx = 0;
-    float iconWidth = (workingSize.size.width / workingGridSize.columns);
-    float iconHeight = (workingSize.size.height / workingGridSize.rows);
-
-    //get the column index
-    tempIdx += (NSUInteger)((point.x-workingSize.origin.x) / iconWidth);
-    //add the indexes of all the rows before it
-    tempIdx += workingGridSize.columns * (NSUInteger)((point.y-workingSize.origin.y) / iconHeight);
-
-    //factor in offset
-    tempIdx -= indexOffset.columns;
-    tempIdx -= indexOffset.rows * workingGridSize.columns;
-
-
-    //check the end of the icon, and make sure it is still in bounds
-    NSUInteger endOfIconIdx = tempIdx + (iconSize.columns-1) + ((iconSize.rows-1) * workingGridSize.columns);
-    if (tempIdx < workingGridSize.columns * workingGridSize.rows && endOfIconIdx < workingGridSize.columns * workingGridSize.rows) {
-        return tempIdx;
+    if (workingGridSize.columns == 0 || workingGridSize.rows == 0 || iconSize.columns == 0 || iconSize.rows == 0) {
+        return proposedIndex;
     }
 
-    return proposedIndex;
+    float iconWidth = workingSize.size.width / workingGridSize.columns;
+    float iconHeight = workingSize.size.height / workingGridSize.rows;
+    if (iconWidth <= 0 || iconHeight <= 0) return proposedIndex;
+
+    // Use signed intermediates so negative touch coordinates or offsets cannot wrap.
+    long long column = (long long)((point.x - workingSize.origin.x) / iconWidth);
+    long long row = (long long)((point.y - workingSize.origin.y) / iconHeight);
+    long long tempIdx = column + (row * workingGridSize.columns);
+    tempIdx -= indexOffset.columns;
+    tempIdx -= (long long)indexOffset.rows * workingGridSize.columns;
+
+    long long totalLength = (long long)workingGridSize.columns * workingGridSize.rows;
+    if (tempIdx < 0 || tempIdx >= totalLength) return proposedIndex;
+    if ((tempIdx % workingGridSize.columns) + iconSize.columns > workingGridSize.columns) return proposedIndex;
+    if ((tempIdx / workingGridSize.columns) + iconSize.rows > workingGridSize.rows) return proposedIndex;
+
+    return tempIdx;
 }
 
 //check different folder tweaks to determine if we should patch folder icons or not
