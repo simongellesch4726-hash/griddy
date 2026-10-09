@@ -377,13 +377,14 @@ BOOL griddyComposingFolderPage = NO;
 %hook SBFolderIconImageView
 - (CGRect)frameForMiniIconAtIndexPath:(NSIndexPath *)indexPath {
     if (![indexPath isKindOfClass:[NSIndexPath class]] || indexPath.length != 2) return %orig;
-    if (griddyFolderIconGridMapping) return %orig;
     SBFolder *folder = ((SBFolderIcon *)self.icon).folder;
     NSUInteger page = indexPath.section;
     NSUInteger item = indexPath.item;
     if (page >= folder.lists.count) return %orig;
     SBIconListModel *model = folder.lists[page];
     if (!model.griddyShouldPatch || !shouldPatchFolderIcon || item >= model.icons.count) return %orig;
+    // Apple's index-to-cell hook only addresses the first list. Other pages still need translation here.
+    if (griddyFolderIconGridMapping && page == 0) return %orig;
     SBIcon *icon = model.icons[item];
     GriddyIconLocationPreferences *prefs = locationPrefs[icon.uniqueIdentifier];
     if (!prefs) return %orig;
