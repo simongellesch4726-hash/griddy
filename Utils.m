@@ -339,6 +339,75 @@ NSArray *patchGridCellInfoForIconList(NSArray *staticIconList, SBIconListGridCel
     return staticIconList;
 }
 
+// Apply the saved layout to iOS 17's speculative drag layout. Unlike the normal layout path,
+// this function must not alter saved positions, priorities, or the drag session's shared state.
+void applyGriddyLayoutToGridCellInfo(NSArray *iconList, SBIconListGridCellInfo *info) {
+    if (![iconList isKindOfClass:[NSArray class]] || info == nil) return;
+
+    long long columns = info.gridSize.columns;
+    long long rows = info.gridSize.rows;
+    long long total = columns * rows;
+    if (columns <= 0 || rows <= 0 || total <= 0 || total > 4096) return;
+
+    [info clearAllIconAndGridCellIndexes];
+
+    NSMutableArray<NSDictionary *> *placements = [NSMutableArray arrayWithCapacity:iconList.count];
+    for (NSUInteger i = 0; i < iconList.count; i++) {
+        SBIcon *icon = iconList[i];
+        GriddyIconLocationPreferences *prefs = locationPrefs[icon.uniqueIdentifier];
+        if (prefs == nil) continue;
+        [placements addObject:@{
+            @"iconIndex": @(i),
+            @"cell": @(prefs.index),
+            @"width": @(MAX(1, prefs.gridSize.columns)),
+            @"height": @(MAX(1, prefs.gridSize.rows)),
+            @"priority": @(prefs.priority)
+        }];
+    }
+    [placements sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
+        return [a[@"priority"] compare:b[@"priority"]];
+    }];
+
+    BOOL occupied[4096];
+    for (long long i = 0; i < total; i++) occupied[i] = NO;
+
+    for (NSDictionary *entry in placements) {
+        NSUInteger iconIndex = [entry[@"iconIndex"] unsignedIntegerValue];
+        long long requested = [entry[@"cell"] longLongValue];
+        long long width = [entry[@"width"] longLongValue];
+        long long height = [entry[@"height"] longLongValue];
+        if (iconIndex >= iconList.count || requested < 0 || requested >= total) continue;
+
+        for (long long attempt = 0; attempt < total; attempt++) {
+            long long cell = (requested + attempt) % total;
+            long long column = cell % columns;
+            long long row = cell / columns;
+            if (column + width > columns || row + height > rows) continue;
+
+            BOOL free = YES;
+            for (long long dy = 0; dy < height && free; dy++) {
+                for (long long dx = 0; dx < width; dx++) {
+                    if (occupied[(row + dy) * columns + column + dx]) {
+                        free = NO;
+                        break;
+                    }
+                }
+            }
+            if (!free) continue;
+
+            for (long long dy = 0; dy < height; dy++) {
+                for (long long dx = 0; dx < width; dx++) {
+                    NSUInteger target = (NSUInteger)((row + dy) * columns + column + dx);
+                    occupied[target] = YES;
+                    [info setIconIndex:iconIndex forGridCellIndex:target];
+                }
+            }
+            [info setGridCellIndex:(NSUInteger)cell forIconIndex:iconIndex];
+            break;
+        }
+    }
+}
+
 //used to calculate the grid cell index for a point and icon size
 //note: this function always returns the index for the top left corner of an icon
 long long calculateGridCellIndexForPoint(CGPoint point, CGRect workingSize, SBHIconGridSize workingGridSize, SBHIconGridSize indexOffset, SBHIconGridSize iconSize) {
