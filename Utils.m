@@ -426,7 +426,8 @@ SBIconGridImage *griddyRenderFolderPage(id cache, NSUInteger pageIndex, SBFolder
     }
     if (!shouldPatchFolderIcon || !hasLoadedPrefs || model.icons.count == 0) return original;
 
-    SBIconGridImage *cached = folderImageCache[model];
+    NSValue *cacheKey = [NSValue valueWithNonretainedObject:model];
+    SBIconGridImage *cached = folderImageCache[cacheKey];
     if (cached && !model.griddyNeedsRefreshFolderImage) return cached;
 
     id layoutObject = [cache respondsToSelector:@selector(listLayout)] ? [cache listLayout] : original.listLayout;
@@ -523,7 +524,7 @@ SBIconGridImage *griddyRenderFolderPage(id cache, NSUInteger pageIndex, SBFolder
         initWithCGImage:rendered.CGImage scale:rendered.scale orientation:UIImageOrientationUp];
     if (result == nil) return original;
     if ([result respondsToSelector:@selector(setListLayout:)]) result.listLayout = original.listLayout ?: layoutObject;
-    folderImageCache[model] = result;
+    folderImageCache[cacheKey] = result;
     model.griddyNeedsRefreshFolderImage = NO;
     return result;
 }
