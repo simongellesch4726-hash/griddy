@@ -35,6 +35,7 @@ extern BOOL griddyImageSuccess;
 extern NSUserDefaults *userDefaults;
 //changes to yes after loading saved dictionary, used with folder preview optimization
 extern BOOL hasLoadedPrefs;
+extern NSMutableDictionary *folderImageCache;
 
 typedef struct SBHIconGridSize {
     unsigned short columns;
