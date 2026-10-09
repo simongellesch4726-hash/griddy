@@ -61,7 +61,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -t packages < <(find . -type f -name '*.deb' -not -path './.git/*' -not -path './theos/*' | sort)
+          packages=()
+          while IFS= read -r package; do
+            packages+=("$package")
+          done < <(find . -type f -name '*.deb' -not -path './.git/*' -not -path './theos/*' | sort)
           if [ "${#packages[@]}" -ne 1 ]; then
             printf 'Expected exactly one .deb, found %s\n' "${#packages[@]}"
             printf '%s\n' "${packages[@]}"
