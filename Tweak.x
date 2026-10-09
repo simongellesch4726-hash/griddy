@@ -424,7 +424,7 @@ BOOL griddyComposingFolderPage = NO;
 - (void)rebuildImagesForFolderIcon:(SBFolderIcon *)folderIcon {
     for (SBIconListModel *model in folderIcon.folder.lists) {
         model.griddyNeedsRefreshFolderImage = YES;
-        [folderImageCache removeObjectForKey:model];
+        [folderImageCache removeObjectForKey:[NSValue valueWithNonretainedObject:model]];
     }
     %orig;
 }
