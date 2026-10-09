@@ -354,6 +354,10 @@ long long calculateGridCellIndexForPoint(CGPoint point, CGRect workingSize, SBHI
     float iconWidth = workingSize.size.width / workingGridSize.columns;
     float iconHeight = workingSize.size.height / workingGridSize.rows;
     if (iconWidth <= 0 || iconHeight <= 0) return proposedIndex;
+    if (point.x < workingSize.origin.x || point.y < workingSize.origin.y ||
+        point.x >= CGRectGetMaxX(workingSize) || point.y >= CGRectGetMaxY(workingSize)) {
+        return proposedIndex;
+    }
 
     // Use signed intermediates so negative touch coordinates or offsets cannot wrap.
     long long column = (long long)((point.x - workingSize.origin.x) / iconWidth);
