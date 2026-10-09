@@ -17,7 +17,7 @@ jobs:
     timeout-minutes: 30
     env:
       THEOS: ${{ github.workspace }}/theos
-      TARGET: iphone:clang:17.5:15.0
+      TARGET: iphone:clang:17.0:15.0
       ARCHS: arm64e
       THEOS_PACKAGE_SCHEME: roothide
 
@@ -42,11 +42,11 @@ jobs:
 
       - name: Install pinned iOS SDK
         env:
-          IOS_SDKS_COMMIT: a4262fddfae9ce1a211f093479edb1555f68228d
+          IOS_SDKS_COMMIT: ad607cb07fe4ad1c9b91cf970bd228c2a9253207
         run: |
-          git clone --depth 1 --filter=blob:none --sparse --no-checkout https://github.com/Tonwalter888/iOS-SDKs.git "$RUNNER_TEMP/ios-sdks"
+          git clone --depth 1 --filter=blob:none --sparse --no-checkout https://github.com/xybp888/iOS-SDKs.git "$RUNNER_TEMP/ios-sdks"
           git -C "$RUNNER_TEMP/ios-sdks" fetch --depth 1 --filter=blob:none origin "$IOS_SDKS_COMMIT"
-          git -C "$RUNNER_TEMP/ios-sdks" sparse-checkout set iPhoneOS17.5.sdk
+          git -C "$RUNNER_TEMP/ios-sdks" sparse-checkout set iPhoneOS17.0.sdk
           git -C "$RUNNER_TEMP/ios-sdks" checkout --detach "$IOS_SDKS_COMMIT"
           test -d "$RUNNER_TEMP/ios-sdks/iPhoneOS17.5.sdk"
           cp -R "$RUNNER_TEMP/ios-sdks/iPhoneOS17.5.sdk" "$THEOS/sdks/"
