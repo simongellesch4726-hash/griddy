@@ -2,13 +2,15 @@
 BOOL needsRefresh;
 
 NSUInteger findFirstOpenIndexInListStartingAt(NSArray *list, SBHIconGridSize gridSize, int start) {
-    int size = gridSize.columns * gridSize.rows;
+    if (gridSize.columns == 0 || gridSize.rows == 0) return 0;
 
-    if(gridSize.columns >= 100 || gridSize.rows >= 100) size = 500;
+    int size = gridSize.columns * gridSize.rows;
+    if (gridSize.columns >= 100 || gridSize.rows >= 100) size = 500;
+    if (size <= 0) return 0;
 
     //create an array that will store icon indexes
     BOOL helperBoolArray[size];
-    
+
     for (int i = 0; i < size; i++) {
         helperBoolArray[i] = NO;
     }
@@ -20,20 +22,24 @@ NSUInteger findFirstOpenIndexInListStartingAt(NSArray *list, SBHIconGridSize gri
         if ([icon isKindOfClass:NSClassFromString(@"SBPlaceholderIcon")]) continue;
 
         GriddyIconLocationPreferences *prefs = locationPrefs[icon.uniqueIdentifier];
+        if (prefs == nil || prefs.gridSize.columns == 0 || prefs.gridSize.rows == 0) continue;
 
-        //check if the icon fits there
-        //note: anything already drawn in up to that point will have higher priority
+        // Ignore stale saved positions instead of indexing outside the occupancy array.
         NSUInteger idx = prefs.index;
+        if (idx >= (NSUInteger)size) continue;
+
         for (int k = 0; k < prefs.gridSize.rows; k++) {
             for (int j = 0; j < prefs.gridSize.columns; j++) {
-                int tempIdx = (idx + j) + (k * gridSize.columns);
-                helperBoolArray[tempIdx] = YES;
+                long long tempIdx = (long long)idx + j + ((long long)k * gridSize.columns);
+                if (tempIdx >= 0 && tempIdx < size) {
+                    helperBoolArray[tempIdx] = YES;
+                }
             }
         }
-
     }
 
     //find the first open index from start
+    if (start < 0) start = 0;
     for (int i = start; i < size; i++) {
         if (!helperBoolArray[i]) {
             return i;
@@ -46,22 +52,24 @@ NSUInteger findFirstOpenIndexInListStartingAt(NSArray *list, SBHIconGridSize gri
 BOOL checkValidIndexForIconSize(SBIconListGridCellInfo *info, SBHIconGridSize writeSize, long long writeIndex) {
     int cols = info.gridSize.columns;
     int rows = info.gridSize.rows;
-    int totalLength = cols * rows;
+    if (cols <= 0 || rows <= 0 || writeSize.columns == 0 || writeSize.rows == 0 || writeIndex < 0) return NO;
 
-    //outside of bounds
+    int totalLength = cols * rows;
     if (writeIndex >= totalLength) return NO;
+
     //already has an icon in that spot
-    if ([info iconIndexForGridCellIndex:writeIndex] < totalLength) return NO;
+    if ([info iconIndexForGridCellIndex:(NSUInteger)writeIndex] < totalLength) return NO;
     //doesnt fit horizontally(example: a 2x2 widget placed with top left corner in the far right)
-    if (!(((writeIndex % cols) + writeSize.columns) <= cols)) return NO;
-    ////doestn fit vertically(example: a 2x2 widget placed with top left corner in the bottom row)
-    if (!(((NSUInteger)(writeIndex / cols) + writeSize.rows) <= (rows))) return NO;
-    
+    if (((writeIndex % cols) + writeSize.columns) > cols) return NO;
+    //doesnt fit vertically(example: a 2x2 widget placed with top left corner in the bottom row)
+    if (((writeIndex / cols) + writeSize.rows) > rows) return NO;
+
     //check every spot on the widget and see if theres already an icon there
-    for (int j = 0; j < writeSize.rows ; j++) {
+    for (int j = 0; j < writeSize.rows; j++) {
         for (int k = 0; k < writeSize.columns; k++) {
-            NSUInteger tempIdx = (writeIndex + (j * info.gridSize.columns)) + k;
-            if ([info iconIndexForGridCellIndex:tempIdx] < totalLength) return NO;
+            long long tempIdx = writeIndex + ((long long)j * cols) + k;
+            if (tempIdx < 0 || tempIdx >= totalLength) return NO;
+            if ([info iconIndexForGridCellIndex:(NSUInteger)tempIdx] < totalLength) return NO;
         }
     }
 
@@ -110,18 +118,34 @@ void createNewLocationPrefs(SBIconListModel *model, SBIcon *icon, long long idx)
 }
 
 NSArray *reorderIconListBasedOnCustomIndex(NSArray *iconList, int size) {
-    
+    if (size <= 0) return iconList;
+
     //create a temporary array that will hold icon entries
     int tempArr[size];
     for (int i = 0; i < size; i++) {
         tempArr[i] = -1;
     }
-    //for each icon, take its preferred(custom) index and put it at that spot
+
+    // Preserve every icon while resolving stale and duplicate saved indexes safely.
     for (int i = 0; i < [iconList count]; i++) {
         SBIcon *icon = iconList[i];
         GriddyIconLocationPreferences *prefs = locationPrefs[icon.uniqueIdentifier];
-        tempArr[prefs.index] = i;
+        NSUInteger preferredIndex = prefs ? prefs.index : (NSUInteger)size;
+        int target = preferredIndex < (NSUInteger)size ? (int)preferredIndex : 0;
+
+        if (tempArr[target] != -1) {
+            int candidate = target;
+            while (candidate < size && tempArr[candidate] != -1) candidate++;
+            if (candidate == size) {
+                candidate = 0;
+                while (candidate < target && tempArr[candidate] != -1) candidate++;
+            }
+            if (candidate >= size || tempArr[candidate] != -1) continue;
+            target = candidate;
+        }
+        tempArr[target] = i;
     }
+
     //go through the temporary array, and take any icons you find along the way, puttung them in a new array
     NSMutableArray *newList = [[NSMutableArray alloc] init];
     for (int i = 0; i < size; i++) {
