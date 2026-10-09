@@ -282,6 +282,7 @@ NSArray *patchGridCellInfoForIconList(NSArray *staticIconList, SBIconListGridCel
     
 
         long long totalCells = (long long)info.gridSize.columns * info.gridSize.rows;
+        if (totalCells > 0 && writeIndex >= (NSUInteger)totalCells) writeIndex = 0;
         long long attempts = 0;
         while (!checkValidIndexForIconSize(info, writeSize, (long long)writeIndex) && attempts < totalCells) {
             needsRefresh = YES;
