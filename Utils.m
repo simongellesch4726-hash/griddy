@@ -408,6 +408,125 @@ void applyGriddyLayoutToGridCellInfo(NSArray *iconList, SBIconListGridCellInfo *
     }
 }
 
+// Render an iOS 17 folder preview with the modern cache accessor rather than the removed
+// _cachedMiniGridImages/_genericMiniGridImage ivars. Return SpringBoard's original image whenever
+// the layout or any mini-icon image is not ready; never publish a partially drawn preview.
+SBIconGridImage *griddyRenderFolderPage(id cache, NSUInteger pageIndex, SBFolderIcon *folderIcon, SBIconGridImage *original) {
+    if (![NSThread isMainThread] || cache == nil || original == nil || folderIcon == nil) return original;
+    if (![original isKindOfClass:NSClassFromString(@"SBIconGridImage")]) return original;
+    NSArray *pages = folderIcon.folder.lists;
+    if (pageIndex >= pages.count) return original;
+
+    SBIconListModel *model = pages[pageIndex];
+    model.griddyShouldPatch = YES;
+    if (!patchFoldersChecked) {
+        shouldPatchFolderIcon = determineFolderPatching();
+        patchFoldersChecked = YES;
+    }
+    if (!shouldPatchFolderIcon || !hasLoadedPrefs || model.icons.count == 0) return original;
+
+    SBIconGridImage *cached = folderImageCache[model];
+    if (cached && !model.griddyNeedsRefreshFolderImage) return cached;
+
+    id layoutObject = [cache respondsToSelector:@selector(listLayout)] ? [cache listLayout] : original.listLayout;
+    if (layoutObject == nil) layoutObject = original.listLayout;
+    if (![layoutObject respondsToSelector:@selector(folderIconVisualConfiguration)] ||
+        ![layoutObject respondsToSelector:@selector(iconImageInfo)] ||
+        ![cache respondsToSelector:@selector(gridCellImageForIcon:)]) return original;
+
+    SBIconListGridLayout *layout = (SBIconListGridLayout *)layoutObject;
+    SBHFolderIconVisualConfiguration *configuration = layout.folderIconVisualConfiguration;
+    if (configuration == nil) return original;
+    CGSize cellSize = configuration.gridCellSize;
+    CGSize spacing = configuration.gridCellSpacing;
+    SBIconImageInfo imageInfo = layout.iconImageInfo;
+    if (cellSize.width <= 0 || cellSize.height <= 0 ||
+        imageInfo.size.width <= 0 || imageInfo.size.height <= 0) return original;
+
+    CGSize step = CGSizeMake(cellSize.width + spacing.width, cellSize.height + spacing.height);
+    if (step.width <= 0 || step.height <= 0) return original;
+    CGFloat gridWidth = imageInfo.size.width * 0.75;
+    CGFloat gridHeight = imageInfo.size.height * 0.75;
+    NSInteger columns = (NSInteger)floor((gridWidth + spacing.width) / step.width);
+    NSInteger rows = (NSInteger)floor((gridHeight + spacing.height) / step.height);
+    if (columns < 1) columns = 1;
+    if (rows < 1) rows = 1;
+    if (columns > 8) columns = 8;
+    if (rows > 8) rows = 8;
+    if (model.gridSize.columns > 0 && model.gridSize.columns < columns) columns = model.gridSize.columns;
+    if (model.gridSize.rows > 0 && model.gridSize.rows < rows) rows = model.gridSize.rows;
+
+    CGSize canvas = CGSizeMake((columns - 1) * step.width + cellSize.width,
+                               (rows - 1) * step.height + cellSize.height);
+    if (canvas.width <= 0 || canvas.height <= 0) return original;
+
+    NSMutableArray<NSDictionary *> *ordered = [NSMutableArray arrayWithCapacity:model.icons.count];
+    for (NSUInteger i = 0; i < model.icons.count; i++) {
+        SBIcon *icon = model.icons[i];
+        if ([icon isKindOfClass:NSClassFromString(@"SBPlaceholderIcon")]) continue;
+        GriddyIconLocationPreferences *prefs = locationPrefs[icon.uniqueIdentifier];
+        if (prefs == nil) return original;
+        [ordered addObject:@{@"icon": icon, @"prefs": prefs, @"order": @(i)}];
+    }
+    [ordered sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
+        GriddyIconLocationPreferences *pa = a[@"prefs"];
+        GriddyIconLocationPreferences *pb = b[@"prefs"];
+        if (pa.priority < pb.priority) return NSOrderedAscending;
+        if (pa.priority > pb.priority) return NSOrderedDescending;
+        return [a[@"order"] compare:b[@"order"]];
+    }];
+
+    BOOL occupied[64];
+    for (NSInteger i = 0; i < 64; i++) occupied[i] = NO;
+    UIGraphicsBeginImageContextWithOptions(canvas, NO, original.scale);
+    if (UIGraphicsGetCurrentContext() == NULL) {
+        UIGraphicsEndImageContext();
+        return original;
+    }
+
+    BOOL complete = YES;
+    NSUInteger drawn = 0;
+    NSInteger modelColumns = model.gridSize.columns;
+    if (modelColumns <= 0) modelColumns = columns;
+    for (NSDictionary *entry in ordered) {
+        SBIcon *icon = entry[@"icon"];
+        GriddyIconLocationPreferences *prefs = entry[@"prefs"];
+        if ([cache respondsToSelector:@selector(shouldSkipGridCellImageForIcon:)] &&
+            [cache shouldSkipGridCellImageForIcon:icon]) continue;
+
+        UIImage *mini = [cache gridCellImageForIcon:icon];
+        if (mini == nil) { complete = NO; break; }
+
+        NSInteger desiredRow = (NSInteger)(prefs.index / modelColumns);
+        NSInteger desiredColumn = (NSInteger)(prefs.index % modelColumns);
+        NSInteger startCell = (desiredRow < rows && desiredColumn < columns)
+            ? desiredRow * columns + desiredColumn : -1;
+        NSInteger chosen = -1;
+        for (NSInteger attempt = 0; attempt < columns * rows; attempt++) {
+            NSInteger candidate = startCell >= 0 ? (startCell + attempt) % (columns * rows) : attempt;
+            if (!occupied[candidate]) { chosen = candidate; break; }
+        }
+        if (chosen < 0) { complete = NO; break; }
+        occupied[chosen] = YES;
+        NSInteger row = chosen / columns;
+        NSInteger column = chosen % columns;
+        [mini drawInRect:CGRectMake(column * step.width, row * step.height, cellSize.width, cellSize.height)];
+        drawn++;
+    }
+
+    UIImage *rendered = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    if (!complete || drawn == 0 || rendered.CGImage == NULL) return original;
+
+    SBIconGridImage *result = [[NSClassFromString(@"SBIconGridImage") alloc]
+        initWithCGImage:rendered.CGImage scale:rendered.scale orientation:UIImageOrientationUp];
+    if (result == nil) return original;
+    if ([result respondsToSelector:@selector(setListLayout:)]) result.listLayout = original.listLayout ?: layoutObject;
+    folderImageCache[model] = result;
+    model.griddyNeedsRefreshFolderImage = NO;
+    return result;
+}
+
 //used to calculate the grid cell index for a point and icon size
 //note: this function always returns the index for the top left corner of an icon
 long long calculateGridCellIndexForPoint(CGPoint point, CGRect workingSize, SBHIconGridSize workingGridSize, SBHIconGridSize indexOffset, SBHIconGridSize iconSize) {
