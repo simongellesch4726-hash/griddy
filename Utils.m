@@ -212,7 +212,7 @@ NSArray *patchGridCellInfoForIconList(NSArray *staticIconList, SBIconListGridCel
             if (![iconList containsObject:tempIcon]) continue;
 
             GriddyIconLocationPreferences *prefs = locationPrefs[tempIcon.uniqueIdentifier];
-            prefs.priority = 100+i;
+            if (prefs) prefs.priority = 100+i;
 
             //if the last existing icon in dragged is a placeholder, this means that the "real" icons have been placed already
             if ([tempIcon isKindOfClass:NSClassFromString(@"SBPlaceholderIcon")]) {
@@ -232,7 +232,7 @@ NSArray *patchGridCellInfoForIconList(NSArray *staticIconList, SBIconListGridCel
             tempIcon = draggedIcons[i];
             if ([iconList containsObject:tempIcon] && [tempIcon isKindOfClass:NSClassFromString(@"SBPlaceholderIcon")]) {
                 GriddyIconLocationPreferences *prefs = locationPrefs[tempIcon.uniqueIdentifier];
-                prefs.priority = 100+i;
+                if (prefs) prefs.priority = 100+i;
             }
         }
     }
