@@ -19,11 +19,12 @@ NSUserDefaults *userDefaults;
 CGRect gridWrapperSize;
 BOOL shouldPatchFolderIcon = YES;
 BOOL patchFoldersChecked = NO;
-NSMutableDictionary<NSString *, SBIconGridImage *> *folderImageCache;
+NSMutableDictionary *folderImageCache;
 BOOL griddyImageSuccess = NO;
 BOOL hasLoadedPrefs = NO;
 BOOL griddyIndexPathFolderAnim = NO;
 BOOL griddyFolderIconGridMapping = NO;
+BOOL griddyComposingFolderPage = NO;
 
 %hook SBIconListModel
 %property (assign, nonatomic) BOOL griddyShouldPatch; 
@@ -410,19 +411,31 @@ BOOL griddyFolderIconGridMapping = NO;
 %group GriddyFolderImageCache
 %hook SBFolderIconImageCache
 - (id)imageForPageAtIndex:(NSUInteger)pageIndex inFolderIcon:(SBFolderIcon *)folderIcon {
-    for (SBIconListModel *model in folderIcon.folder.lists) model.griddyShouldPatch = YES;
-    return %orig;
+    if (griddyComposingFolderPage) return %orig;
+    griddyComposingFolderPage = YES;
+    id original = nil;
+    @try { original = %orig; } @finally { griddyComposingFolderPage = NO; }
+    return griddyRenderFolderPage(self, pageIndex, folderIcon, (SBIconGridImage *)original);
 }
 - (void)rebuildImagesForFolderIcon:(SBFolderIcon *)folderIcon {
-    for (SBIconListModel *model in folderIcon.folder.lists) model.griddyNeedsRefreshFolderImage = YES;
+    for (SBIconListModel *model in folderIcon.folder.lists) {
+        model.griddyNeedsRefreshFolderImage = YES;
+        [folderImageCache removeObjectForKey:model];
+    }
     %orig;
 }
-- (void)rebuildImagesReferencingIcons:(NSArray *)icons { %orig; }
+- (void)rebuildImagesReferencingIcons:(NSArray *)icons {
+    [folderImageCache removeAllObjects];
+    %orig;
+}
 %end
 %hook SBFolderIconImageSharedCache
 - (id)imageForPageAtIndex:(NSUInteger)pageIndex inFolderIcon:(SBFolderIcon *)folderIcon {
-    for (SBIconListModel *model in folderIcon.folder.lists) model.griddyShouldPatch = YES;
-    return %orig;
+    if (griddyComposingFolderPage) return %orig;
+    griddyComposingFolderPage = YES;
+    id original = nil;
+    @try { original = %orig; } @finally { griddyComposingFolderPage = NO; }
+    return griddyRenderFolderPage(self, pageIndex, folderIcon, (SBIconGridImage *)original);
 }
 - (void)rebuildImagesForFolderIcon:(SBFolderIcon *)folderIcon {
     for (SBIconListModel *model in folderIcon.folder.lists) model.griddyNeedsRefreshFolderImage = YES;
