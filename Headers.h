@@ -87,6 +87,15 @@ typedef struct SBIconImageInfo {
 @end
 
 @interface SBFolderIconImageCache : NSObject
+- (id)imageForPageAtIndex:(NSUInteger)pageIndex inFolderIcon:(id)folderIcon;
+- (void)rebuildImagesForFolderIcon:(id)folderIcon;
+- (void)rebuildImagesReferencingIcons:(id)icons;
+@end
+
+@interface SBFolderIconImageSharedCache : NSObject
+- (id)imageForPageAtIndex:(NSUInteger)pageIndex inFolderIcon:(id)folderIcon;
+- (void)rebuildImagesForFolderIcon:(id)folderIcon;
+- (void)rebuildImagesReferencingIcons:(id)icons;
 @end
 
 @interface SBIconView : UIView
@@ -113,6 +122,7 @@ typedef struct SBIconImageInfo {
 
 @interface SBFolderIcon : SBIcon
 @property (nonatomic,readonly,strong) SBFolder *folder;
+- (NSUInteger)gridCellIndexForIconIndex:(NSUInteger)iconIndex;
 @end
 
 @interface SBIconImageView : UIView
@@ -121,6 +131,7 @@ typedef struct SBIconImageInfo {
 @end
 
 @interface SBFolderIconImageView : SBIconImageView
+- (CGRect)frameForMiniIconAtIndexPath:(NSIndexPath *)indexPath;
 @end
 
 @interface SBHFolderIconVisualConfiguration : NSObject
