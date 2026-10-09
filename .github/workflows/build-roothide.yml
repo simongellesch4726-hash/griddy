@@ -44,13 +44,10 @@ jobs:
         env:
           IOS_SDKS_COMMIT: a4262fddfae9ce1a211f093479edb1555f68228d
         run: |
-          git init "$RUNNER_TEMP/ios-sdks"
-          git -C "$RUNNER_TEMP/ios-sdks" remote add origin https://github.com/Tonwalter888/iOS-SDKs.git
-          git -C "$RUNNER_TEMP/ios-sdks" config core.sparseCheckout true
+          git clone --depth 1 --filter=blob:none --sparse --no-checkout https://github.com/Tonwalter888/iOS-SDKs.git "$RUNNER_TEMP/ios-sdks"
           git -C "$RUNNER_TEMP/ios-sdks" fetch --depth 1 --filter=blob:none origin "$IOS_SDKS_COMMIT"
-          git -C "$RUNNER_TEMP/ios-sdks" checkout --detach FETCH_HEAD
-          git -C "$RUNNER_TEMP/ios-sdks" sparse-checkout init --cone
           git -C "$RUNNER_TEMP/ios-sdks" sparse-checkout set iPhoneOS17.5.sdk
+          git -C "$RUNNER_TEMP/ios-sdks" checkout --detach "$IOS_SDKS_COMMIT"
           test -d "$RUNNER_TEMP/ios-sdks/iPhoneOS17.5.sdk"
           cp -R "$RUNNER_TEMP/ios-sdks/iPhoneOS17.5.sdk" "$THEOS/sdks/"
           test -f "$THEOS/sdks/iPhoneOS17.5.sdk/SDKSettings.plist"
