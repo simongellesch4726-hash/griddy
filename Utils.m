@@ -1,4 +1,5 @@
 #import "Utils.h"
+#import <math.h>
 BOOL needsRefresh;
 
 NSUInteger findFirstOpenIndexInListStartingAt(NSArray *list, SBHIconGridSize gridSize, int start) {
